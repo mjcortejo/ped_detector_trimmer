@@ -1,0 +1,10 @@
+Lib/
+bin/
+etc/
+.ipynb_checkpoints
+share/
+yolo-Weights
+*.mp4
+*.webm
+pyvenv.cfg
+*.pt

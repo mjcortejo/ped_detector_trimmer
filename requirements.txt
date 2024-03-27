@@ -1,0 +1,3 @@
+opencv-python
+ultralytics
+imutils==0.5.3
