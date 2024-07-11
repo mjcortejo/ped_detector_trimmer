@@ -1,16 +1,17 @@
 import os, sys
+import glob
 import argparse
 from ultralytics import YOLO
 import torch
-# import math
+import math
 import time, datetime
 import cv2
 
+import multiprocessing
+from tqdm import tqdm
+
 torch.cuda.set_device(0) # Set to your desired GPU number
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-print(device)
-
-print("Loading YOLO Model")
 
 model = YOLO("yolov8n.pt")
 if torch.cuda.is_available(): model.to(device=device)
@@ -25,19 +26,10 @@ def resize(image, scale_factor = 50):
     resized_image = cv2.resize(image, dimension, interpolation = cv2.INTER_AREA)
     return resized_image
 
-if __name__ == "__main__":
-    program_start = time.time()
-    parser = argparse.ArgumentParser(description='Detect people in a video')
-    parser.add_argument('-v', '--video_file', type=str, help='The path to the video file')
-
-    # sys.argv.extend(["-v", "convertedExterndisk0_Ch2_20240305170000_20240305180000Converted.mp4"])
-    # sys.argv.extend(["-v", "vid.webm"])
-
-    args = parser.parse_args()
-  
-    filename = args.video_file
-    cap = cv2.VideoCapture(filename)
-    print(f"Loaded video {filename}")
+# Define a function that will be executed in parallel
+def process_data(filepath):
+    cap = cv2.VideoCapture(filepath)
+    filename = os.path.basename(filepath)
 
     frame_length = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
 
@@ -46,13 +38,10 @@ if __name__ == "__main__":
 
     save_path = f"results/{filename}/"
     if not os.path.exists(save_path): os.makedirs(save_path) #creates a dedicated folder for the video file
-    log_path = f"logs/{filename}"
+    log_path = f"logs/"
     if not os.path.exists(log_path): os.makedirs(log_path)
 
     save_path_pattern = os.path.join(save_path, f"{filename}_%{str(zfill_amount)}d") #not used for now
-    print(save_path_pattern)
-
-    print("Running model inference")
 
     inference_start = time.time()
 
@@ -62,16 +51,17 @@ if __name__ == "__main__":
         if ret:
             results = model(image, verbose=False)
             frame_counter += 1
-            if frame_counter % 500 == 0: print(f"{frame_counter} out of {frame_length} frames at {round((frame_counter / frame_length) * 100, 2)}%", end="\r")
+            # if frame_counter % 500 == 0: print(f"{frame_counter} out of {frame_length} frames at {round((frame_counter / frame_length) * 100, 2)}%", end="\r")
 
             for r in results:
                 boxes = r.boxes
+                detected = False
                 if 0 in boxes.cls:  # If there is a person/s (index 0) in the frame
                     inference_counter += 1
+                    detected = True
                     for box in boxes:
                         cls = int(box.cls[0])
                         if cls == 0: #Only get person boxes
-
                             # bounding box
                             x1, y1, x2, y2 = box.xyxy[0]
                             x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2) # convert to int values
@@ -90,10 +80,11 @@ if __name__ == "__main__":
                             thickness = 2
 
                             cv2.putText(image, "person", org, font, fontScale, color, thickness)
-                image = resize(image)
-                cv2.imwrite(os.path.join(save_path, f"{filename}_{str(inference_counter).zfill(zfill_amount)}.jpg"), image)  #zfill will zero-pad integer with {zfill_amount} digits (e.g. 001, 002)
+                if detected:
+                    # image = resize(image)
+                    cv2.imwrite(os.path.join(save_path, f"{filename}_{str(inference_counter).zfill(zfill_amount)}.jpg"), image)  #zfill will zero-pad integer with {zfill_amount} digits (e.g. 001, 002)
         else:
-            print(f"Video Stream is done at {inference_counter} inferred frames out of {frame_counter} actual frames")
+            # print(f"Video {filename} is done at {inference_counter} inferred frames out of {frame_counter} actual frames")
             break
     end = time.time()
 
@@ -101,11 +92,11 @@ if __name__ == "__main__":
         f"Frames Inferred: {inference_counter}",
         f"Actual Frame Count: {frame_counter}",
         f"Inference Percentage: {round((inference_counter / frame_counter) * 100, 2)}%",
-        f"Total Program Time: {end-program_start}",
+        # f"Total Program Time: {end-program_start}",
         f"Inference Only Time: {end-inference_start}"
     ]
 
-    print(log, sep="\n")
+    # print(log, sep="\n")
 
     ts = time.time()
     sttime = datetime.datetime.fromtimestamp(ts).strftime('%Y%m%d_%H_%M_%S')
@@ -116,3 +107,44 @@ if __name__ == "__main__":
     results_log.write(str(log))
     results_log.close()
     cap.release()
+
+
+if __name__ == "__main__":
+    # program_start = time.time()
+    parser = argparse.ArgumentParser(description='Detect people in a video')
+    parser.add_argument('-j', '--job_folder', type=str, help='The path to the videos file', default="jobs/")
+    parser.add_argument('-e', '--extension', type=str, help='The extension of the videos', default=".mp4")
+    parser.add_argument('-n', '--num_workers', type=str, help='Number of workers to use', default=4)
+
+
+    args = parser.parse_args()
+  
+    job_path = args.job_folder + "*" + args.extension
+    print(job_path)
+    num_workers = int(args.num_workers)
+    video_files = glob.glob(job_path)
+    print(video_files)
+
+    multi_job = True
+
+    if multi_job:
+        # Create a multiprocessing pool
+        model.share_memory()
+        ctx = multiprocessing.get_context("spawn")
+        pool = ctx.Pool(num_workers)
+
+        # Use tqdm to track the progress of multiprocessing
+        results = list(tqdm(pool.imap(process_data, video_files), total=len(video_files)))
+
+        # Close the pool of processes
+        pool.close()
+        pool.join()
+
+        # Print the results
+        print("Results:", results)
+    else:
+        for filepath in video_files:
+            process_data(filepath)
+
+    
+
