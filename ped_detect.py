@@ -36,8 +36,8 @@ def process_data(filepath, results_path):
     inference_counter = 0 # to count how many times the model inferenced (to be used for file saving)
     frame_counter = 0 # to count for progress
 
-
-    save_path = f"results/{filename}/"
+    # save_path = f"results/{filename}/"
+    save_path = os.path.join(results_path, filename)
     if not os.path.exists(save_path): os.makedirs(save_path) #creates a dedicated folder for the video file
     log_path = f"logs/"
     if not os.path.exists(log_path): os.makedirs(log_path)
