@@ -27,7 +27,7 @@ def resize(image, scale_factor = 50):
     return resized_image
 
 # Define a function that will be executed in parallel
-def process_data(filepath):
+def process_data(filepath, results_path):
     cap = cv2.VideoCapture(filepath)
     filename = os.path.basename(filepath)
 
@@ -35,6 +35,7 @@ def process_data(filepath):
 
     inference_counter = 0 # to count how many times the model inferenced (to be used for file saving)
     frame_counter = 0 # to count for progress
+
 
     save_path = f"results/{filename}/"
     if not os.path.exists(save_path): os.makedirs(save_path) #creates a dedicated folder for the video file
@@ -82,7 +83,8 @@ def process_data(filepath):
                             cv2.putText(image, "person", org, font, fontScale, color, thickness)
                 if detected:
                     # image = resize(image)
-                    cv2.imwrite(os.path.join(save_path, f"{filename}_{str(inference_counter).zfill(zfill_amount)}.jpg"), image)  #zfill will zero-pad integer with {zfill_amount} digits (e.g. 001, 002)
+                    cv2.imwrite(os.path.join(results_path, f"{filename}_{str(inference_counter).zfill(zfill_amount)}.jpg"), image)  #zfill will zero-pad integer with {zfill_amount} digits (e.g. 001, 002)
+                    # save results to the 
         else:
             # print(f"Video {filename} is done at {inference_counter} inferred frames out of {frame_counter} actual frames")
             break
@@ -96,7 +98,6 @@ def process_data(filepath):
         f"Inference Only Time: {end-inference_start}"
     ]
 
-    # print(log, sep="\n")
 
     ts = time.time()
     sttime = datetime.datetime.fromtimestamp(ts).strftime('%Y%m%d_%H_%M_%S')
@@ -115,36 +116,45 @@ if __name__ == "__main__":
     parser.add_argument('-j', '--job_folder', type=str, help='The path to the videos file', default="jobs/")
     parser.add_argument('-e', '--extension', type=str, help='The extension of the videos', default=".mp4")
     parser.add_argument('-n', '--num_workers', type=str, help='Number of workers to use', default=4)
-
+    parser.add_argument('-s', '--save_folder', type=str, help='The path to save the results', default="results/")
+    
+    # add argument to enable flag for multiprocessing
+    parser.add_argument('-m', '--multi', action='store_true', help='Enable multi-processing', default=True)
 
     args = parser.parse_args()
   
     job_path = args.job_folder + "*" + args.extension
-    print(job_path)
-    num_workers = int(args.num_workers)
+    print(f"Job folder file path is ",job_path)
+    
+    save_path = args.save_folder
+    print(f"Savings results to {save_path}")
+    
     video_files = glob.glob(job_path)
-    print(video_files)
+    print(f"Found {len(video_files)} files")
 
-    multi_job = True
+    multi_job = args.multi
 
     if multi_job:
+        num_workers = int(args.num_workers)
+        print(f"Multi-processing enabled. Will use {num_workers} workers for multiprocessing")
+
         # Create a multiprocessing pool
         model.share_memory()
         ctx = multiprocessing.get_context("spawn")
         pool = ctx.Pool(num_workers)
 
         # Use tqdm to track the progress of multiprocessing
-        results = list(tqdm(pool.imap(process_data, video_files), total=len(video_files)))
+        results = list(tqdm(pool.imap(process_data, video_files, save_path), total=len(video_files)))
 
         # Close the pool of processes
         pool.close()
         pool.join()
 
         # Print the results
-        print("Results:", results)
+        print(f"Done processing {len(results)} files")
     else:
         for filepath in video_files:
-            process_data(filepath)
+            process_data(filepath, save_path)
 
     
 
