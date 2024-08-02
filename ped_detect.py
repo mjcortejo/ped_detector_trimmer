@@ -6,6 +6,7 @@ import torch
 import math
 import time, datetime
 import cv2
+import functools
 
 import multiprocessing
 from tqdm import tqdm
@@ -38,6 +39,7 @@ def process_data(filepath, results_path):
 
     # save_path = f"results/{filename}/"
     save_path = os.path.join(results_path, filename)
+    print("SAVE_PATH", save_path)
     if not os.path.exists(save_path): os.makedirs(save_path) #creates a dedicated folder for the video file
     log_path = f"logs/"
     if not os.path.exists(log_path): os.makedirs(log_path)
@@ -144,7 +146,9 @@ if __name__ == "__main__":
         pool = ctx.Pool(num_workers)
 
         # Use tqdm to track the progress of multiprocessing
-        results = list(tqdm(pool.imap(process_data, video_files, save_path), total=len(video_files)))
+
+        process_data_partial = functools.partial(process_data, results_path=save_path)
+        results = list(tqdm(pool.imap(process_data_partial, video_files), total=len(video_files)))
 
         # Close the pool of processes
         pool.close()
